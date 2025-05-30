@@ -24,7 +24,11 @@ ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 # Bot client setup
 bot = Client("MovieAutoBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # MongoDB setup
 client = MongoClient(MONGO_URI)
@@ -93,12 +97,15 @@ async def search_movie(c, iq):
             [InlineKeyboardButton("আপলোড আছে", callback_data=f"nf_{iq.from_user.id}_exists")],
             [InlineKeyboardButton("শিগগির আসবে", callback_data=f"nf_{iq.from_user.id}_soon")]
         ])
-        await c.send_message(chat_id, f"❗ Movie not found.\nQuery: `{query}`", reply_markup=btns)
+        # Fixed: chat_id was undefined, changed to iq.from_user.id
+        await c.send_message(iq.from_user.id, f"❗ Movie not found.\nQuery: `{query}`", reply_markup=btns)
     await iq.answer(results, cache_time=1)
+
 # Callback handler (admin response)
 @bot.on_callback_query()
 async def callback_handler(c, cb):
-    if not str(cb.from_user.id) == str(ADMIN_ID):
+    # Fixed: Compare directly with integer ADMIN_ID
+    if cb.from_user.id != ADMIN_ID:
         await cb.answer("Admins only", show_alert=True)
         return
     _, uid, resp = cb.data.split("_")
@@ -107,7 +114,7 @@ async def callback_handler(c, cb):
         "notyet": "এই মুভিটি এখনো আমাদের ডাটাবেসে নেই।",
         "exists": "মুভিটি আপলোড আছে, একটু ভালোভাবে সার্চ করুন।",
         "soon": "এই মুভিটি শিগগিরই আপলোড করা হবে।"
-    }.get(resp, "ধন্যবাদ")
+    }.get(resp, "ধন্যবাদ") # Default response if key not found
     await c.send_message(int(uid), msg)
     await cb.answer("User notified.")
 
@@ -119,10 +126,13 @@ async def buy_cmd(c, m):
         [InlineKeyboardButton("15 দিন - 80৳", callback_data="buy_15")],
         [InlineKeyboardButton("30 দিন - 120৳", callback_data="buy_30")],
     ])
-    await m.reply("💳 পেমেন্ট করতে নিচের বিকাশ/নগদ নাম্বার ব্যবহার করুন:
+    await m.reply(
+        """💳 পেমেন্ট করতে নিচের বিকাশ/নগদ নাম্বার ব্যবহার করুন:
 `01975123274`
 
-প্ল্যান বেছে নিন এবং এডমিনকে জানান: @ctgmovies23", reply_markup=btn)
+প্ল্যান বেছে নিন এবং এডমিনকে জানান: @ctgmovies23""",
+        reply_markup=btn
+    )
 
 # Grant premium (admin only)
 @bot.on_message(filters.command("grant") & filters.user(ADMIN_ID))
@@ -132,20 +142,30 @@ async def grant(c, m):
         expiry = datetime.utcnow() + timedelta(days=int(days))
         users.update_one({"_id": int(uid)}, {"$set": {"is_premium": True, "expiry": expiry}}, upsert=True)
         await m.reply("✅ Granted")
-    except:
-        await m.reply("Usage: /grant user_id days")
+    except IndexError:
+        await m.reply("ব্যবহারের নিয়ম: `/grant user_id days`")
+    except ValueError:
+        await m.reply("ব্যবহারের নিয়ম: `/grant user_id days` (দিন সংখ্যা হতে হবে)")
+    except Exception as e:
+        logging.error(f"Error granting premium: {e}")
+        await m.reply("প্রিমিয়াম দিতে সমস্যা হয়েছে।")
+
 
 # Delete commands
 @bot.on_message(filters.command("delete_movie") & filters.user(ADMIN_ID))
 async def delete_movie(c, m):
-    title = m.text.split(maxsplit=1)[1]
-    result = movies.delete_one({"title": {"$regex": f"^{title}$", "$options": "i"}})
-    await m.reply(f"🗑️ Deleted: {result.deleted_count}")
+    try:
+        title = m.text.split(maxsplit=1)[1]
+        result = movies.delete_one({"title": {"$regex": f"^{title}$", "$options": "i"}})
+        await m.reply(f"🗑️ ডিলিট করা হয়েছে: {result.deleted_count} টি মুভি।")
+    except IndexError:
+        await m.reply("ব্যবহারের নিয়ম: `/delete_movie [মুভির নাম]`")
+
 
 @bot.on_message(filters.command("delete_all_movies") & filters.user(ADMIN_ID))
 async def delete_all_movies(c, m):
     movies.drop()
-    await m.reply("🗑️ All movies deleted")
+    await m.reply("🗑️ সব মুভি ডিলিট করা হয়েছে।")
 
 # Stats
 @bot.on_message(filters.command("stats") & filters.user(ADMIN_ID))
@@ -153,7 +173,7 @@ async def stats(c, m):
     u = users.count_documents({})
     p = users.count_documents({"is_premium": True})
     mv = movies.count_documents({})
-    await m.reply(f"👤 Users: {u}\n💎 Premiums: {p}\n🎬 Movies: {mv}")
+    await m.reply(f"👤 মোট ব্যবহারকারী: {u}\n💎 প্রিমিয়াম ব্যবহারকারী: {p}\n🎬 মোট মুভি: {mv}")
 
 # Start bot
 bot.run()
