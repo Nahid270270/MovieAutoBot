@@ -93,11 +93,8 @@ async def search_movie(c, iq):
             [InlineKeyboardButton("আপলোড আছে", callback_data=f"nf_{iq.from_user.id}_exists")],
             [InlineKeyboardButton("শিগগির আসবে", callback_data=f"nf_{iq.from_user.id}_soon")]
         ])
-        await c.send_message(ADMIN_ID, f"❗ Movie not found: {query}")
-User: [{iq.from_user.first_name}](tg://user?id={iq.from_user.id})
-Query: `{query}`", reply_markup=btns)
+        await c.send_message(chat_id, f"❗ Movie not found.\nQuery: `{query}`", reply_markup=btns)
     await iq.answer(results, cache_time=1)
-
 # Callback handler (admin response)
 @bot.on_callback_query()
 async def callback_handler(c, cb):
