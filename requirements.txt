@@ -1,4 +1,5 @@
-python-dotenv
 pyrogram
+tgcrypto
 pymongo
-flask
+Flask
+python-dotenv
